@@ -1,6 +1,7 @@
 import asyncio
 import json
 from typing import Dict, Optional
+from urllib.parse import urlencode
 
 import httpx
 from playwright.async_api import BrowserContext, Page
@@ -70,7 +71,7 @@ class XHSClient:
         final_uri = uri
         if isinstance(params, dict):
             final_uri = (f"{uri}?"
-                         f"{'&'.join([f'{k}={v}' for k, v in params.items()])}")
+                         f"{urlencode(params)}")
         headers = await self._pre_headers(final_uri)
         return await self.request(method="GET", url=f"{self._host}{final_uri}", headers=headers)
 
@@ -85,7 +86,7 @@ class XHSClient:
         utils.logger.info("Begin to ping xhs...")
         ping_flag = False
         try:
-            note_card: Dict = await self.get_note_by_keyword(keyword="小红书")
+            note_card: Dict = await self.get_note_by_keyword(keyword="小红书", filters="")
             if note_card.get("items"):
                 ping_flag = True
         except Exception as e:
@@ -100,9 +101,11 @@ class XHSClient:
 
     async def get_note_by_keyword(
             self, keyword: str,
+            filters: str,
+            search_id: str = "",
             page: int = 1, page_size: int = 20,
             sort: SearchSortType = SearchSortType.GENERAL,
-            note_type: SearchNoteType = SearchNoteType.ALL
+            note_type: SearchNoteType = SearchNoteType.VIDEO
     ) -> Dict:
         """search note by keyword
 
@@ -113,16 +116,28 @@ class XHSClient:
         :param note_type: note type, defaults to SearchNoteType.ALL
         :return: {has_more: true, items: []}
         """
+
+        if len(search_id) == 0:
+            search_id = get_search_id()
+            
+        print(search_id)
+        
         uri = "/api/sns/web/v1/search/notes"
         data = {
             "keyword": keyword,
             "page": page,
             "page_size": page_size,
-            "search_id": get_search_id(),
+            "search_id": search_id,
             "sort": sort.value,
-            "note_type": note_type.value
+            "note_type": note_type.value,
         }
-        return await self.post(uri, data)
+
+        if len(filters) > 0:
+            data["filters"] = filters
+        
+        notes = await self.post(uri, data)
+        notes["search_id"] = search_id
+        return notes
 
     async def get_note_by_id(self, note_id: str) -> Dict:
         """
@@ -145,6 +160,20 @@ class XHSClient:
         params = {
             "note_id": note_id,
             "cursor": cursor
+        }
+        return await self.get(uri, params)
+    
+    async def get_note_filters(self, keyword: str, search_id: str,) -> Dict:
+        """get note filters
+        :param keyword: key word to search
+        :param search_id: search id from first get_note_by_keyword
+        :return: 
+        """
+        
+        uri = "/api/sns/web/v1/search/filters"
+        params = {
+            "keyword": keyword,
+            "search_id": search_id,
         }
         return await self.get(uri, params)
 

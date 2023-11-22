@@ -10,6 +10,7 @@ from playwright.async_api import (BrowserContext, BrowserType, Page,
 import config
 from base.base_crawler import AbstractCrawler
 from base.proxy_account_pool import AccountPool
+from media_platform.xhs.help import get_search_id
 from models import xiaohongshu as xhs_model
 from tools import utils
 from var import crawler_type_var
@@ -88,8 +89,10 @@ class XiaoHongShuCrawler(AbstractCrawler):
 
     async def search(self) -> None:
         """Search for notes and retrieve their comment information."""
+
         utils.logger.info("Begin search xiaohongshu keywords")
-        xhs_limit_count = 20  # xhs limit page fixed value
+        xhs_limit_count = 10  # xhs limit page fixed value
+
         for keyword in config.KEYWORDS.split(","):
             utils.logger.info(f"Current search keyword: {keyword}")
             page = 1
@@ -97,22 +100,37 @@ class XiaoHongShuCrawler(AbstractCrawler):
                 note_id_list: List[str] = []
                 notes_res = await self.xhs_client.get_note_by_keyword(
                     keyword=keyword,
+                    filters="", 
                     page=page,
                 )
-                semaphore = asyncio.Semaphore(config.MAX_CONCURRENCY_NUM)
-                task_list = [
-                    self.get_note_detail(post_item.get("id"), semaphore)
-                    for post_item in notes_res.get("items", {})
-                    if post_item.get('model_type') not in ('rec_query', 'hot_query')
-                ]
-                note_details = await asyncio.gather(*task_list)
-                for note_detail in note_details:
-                    if note_detail is not None:
-                        await xhs_model.update_xhs_note(note_detail)
-                        note_id_list.append(note_detail.get("note_id"))
-                page += 1
-                utils.logger.info(f"Note details: {note_details}")
-                await self.batch_get_note_comments(note_id_list)
+                
+                search_id = notes_res["search_id"]
+                search_filters = await self.xhs_client.get_note_filters(keyword=keyword,search_id=search_id)
+                print(search_filters)
+                
+                for tag in search_filters.get("filter_tags"):
+                    notes_res = await self.xhs_client.get_note_by_keyword(
+                        keyword=keyword,
+                        search_id=search_id+'@'+get_search_id(),
+                        filters='[{\"type\":\"filter_hot\",\"tags\":[\"'+tag["name"]+'\"]}]', 
+                        page=page,
+                    )
+                    
+                    semaphore = asyncio.Semaphore(config.MAX_CONCURRENCY_NUM)
+                    task_list = [
+                        self.get_note_detail(post_item.get("id"), semaphore)
+                        for post_item in notes_res.get("items", {})
+                        if post_item.get('model_type') not in ('rec_query', 'hot_query')
+                    ]
+                    note_details = await asyncio.gather(*task_list)
+                    for note_detail in note_details:
+                        if note_detail is not None:
+                            await xhs_model.update_xhs_note(note_detail, keyword, tag["name"])
+                            note_id_list.append(note_detail.get("note_id"))
+                    page += 1
+                    utils.logger.info(f"Note details: {note_details}")
+                    await asyncio.sleep(6)
+                    # await self.batch_get_note_comments(note_id_list)
 
     async def get_specified_notes(self):
         """Get the information and comments of the specified post"""

@@ -61,7 +61,7 @@ class XHSNoteComment(XhsBaseModel):
         return f"{self.comment_id} - {self.content}"
 
 
-async def update_xhs_note(note_item: Dict):
+async def update_xhs_note(note_item: Dict, keyword: str, hot_word: str):
     note_id = note_item.get("note_id")
     user_info = note_item.get("user", {})
     interact_info = note_item.get("interact_info", {})
@@ -84,7 +84,9 @@ async def update_xhs_note(note_item: Dict):
         "ip_location": note_item.get("ip_location", ""),
         "image_list": ','.join([img.get('url', '') for img in image_list]),
         "last_modify_ts": utils.get_current_timestamp(),
-        "note_url": f"https://www.xiaohongshu.com/explore/{note_id}"
+        "note_url": f"https://www.xiaohongshu.com/explore/{note_id}",
+        "keyword": keyword,
+        "hot_word": hot_word,
     }
     print("xhs note:", local_db_item)
     if config.IS_SAVED_DATABASED:

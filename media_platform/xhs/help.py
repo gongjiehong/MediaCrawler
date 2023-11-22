@@ -254,7 +254,7 @@ def base36decode(number):
 def get_search_id():
     e = int(time.time() * 1000) << 64
     t = int(random.uniform(0, 2147483646))
-    return base36encode((e + t))
+    return base36encode((e + t)).lower()
 
 
 if __name__ == '__main__':
